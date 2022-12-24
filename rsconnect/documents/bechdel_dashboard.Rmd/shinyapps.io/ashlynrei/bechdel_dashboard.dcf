@@ -1,0 +1,13 @@
+name: bechdel_dashboard
+title: bechdel_dashboard
+username:
+account: ashlynrei
+server: shinyapps.io
+hostUrl: https://api.shinyapps.io/v1
+appId: 7938459
+bundleId: 6669396
+url: https://ashlynrei.shinyapps.io/bechdel_dashboard/
+when: 1671847293.78454
+lastSyncTime: 1671847293.78454
+asMultiple: FALSE
+asStatic: FALSE

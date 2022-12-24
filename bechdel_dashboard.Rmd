@@ -1,0 +1,397 @@
+---
+title: "The Bechdel Test in Movies"
+output: 
+  flexdashboard::flex_dashboard:
+    orientation: columns
+    vertical_layout: fill
+runtime: shiny
+---
+
+```{r setup, include=FALSE}
+library(flexdashboard)
+library(tidyverse)
+library(purrr)
+library(ggplot2)
+library(here)
+library(DT)
+library(shiny)
+library(rsconnect)
+library(tableone)
+```
+
+About
+========================================= 
+**Purpose of this dashboard**
+
+The purpose of this dashboard is to look at various factors that may be associated with passing the Bechdel Test. 
+
+**What is the Bechdel Test?**
+
+Created by cartoonist Alison Bechdel in 1985, the Bechdel Test assesses gender bias in movies. To pass the Bechdel test, the movie must have the following criteria: 
+
+
+1. there are at least 2 named women
+2. those 2 women have at least one conversation 
+3. that conversation isn't about a male
+
+**Data**
+
+This data is part of the TidyTuesday series. This data comes from FiveThirtyEight. The data dictionary and dataset used can be found here: https://github.com/rfordatascience/tidytuesday/blob/master/data/2021/2021-03-09/readme.md
+
+
+<iframe
+    width="640"
+    height="480"
+    src="https://youtu.be/cEQuxhWvXEI"
+    frameborder="0"
+    allow="autoplay; encrypted-media"
+    allowfullscreen
+>
+</iframe>
+
+
+The Data
+=========================================  
+
+Here is the raw data:
+
+```{r}
+library(here)
+library(tidyverse)
+# tests if a directory named "data" exists locally
+if(!dir.exists(here("data"))) { dir.create(here("data")) }
+
+# saves data only once (not each time you knit a R Markdown)
+if(!file.exists(here("data","movies"))) {
+  url_csv <- 'https://raw.githubusercontent.com/rfordatascience/tidytuesday/master/data/2021/2021-03-09/movies.csv'
+  movies <- readr::read_csv(url_csv)
+
+  # save the file to RDS objects
+  saveRDS(movies, file= here("data","movies.RDS"))
+}
+```
+
+```{r}
+movies <- readRDS(here("data", "movies.RDS"))
+
+movies |> DT::datatable()
+```
+
+
+Passing the Bechdel Test Over Time
+=========================================  
+
+
+Column {.tabset}
+----------------------------------------
+
+
+```{r}
+mov <- select(movies, -c(imdb,test, clean_test, code, plot, country, writer, actors, released, type, poster, imdb_votes, error, response, period_code)) %>%
+  rename("bechdel_result" = "binary") %>%
+  mutate(runtime = str_replace(movies[["runtime"]], " min", "")) %>%
+  #mutate(runtime = substr(movies[["runtime"]], start=1, stop=2)) %>%
+  mutate(biography = case_when(str_detect(genre, "Biography") ~ 1, TRUE ~ 0),
+         drama = case_when(str_detect(genre, "Drama") ~ 1, TRUE ~ 0),
+         history = case_when(str_detect(genre, "History") ~ 1, TRUE ~ 0),
+         action = case_when(str_detect(genre, "Action") ~ 1, TRUE ~ 0),
+         comedy = case_when(str_detect(genre, "Comedy") ~ 1, TRUE ~ 0),
+         crime = case_when(str_detect(genre, "Crime") ~ 1, TRUE ~ 0),
+         sport = case_when(str_detect(genre, "Sport") ~ 1, TRUE ~ 0),
+         adventure = case_when(str_detect(genre, "Adventure") ~ 1, TRUE ~ 0),
+         fantasy = case_when(str_detect(genre, "Fantasy") ~ 1, TRUE ~ 0),
+         thriller = case_when(str_detect(genre, "Thriller") ~ 1, TRUE ~ 0),
+         romance = case_when(str_detect(genre, "Romance") ~ 1, TRUE ~ 0),
+         scifi = case_when(str_detect(genre, "Sci-fi") ~ 1, TRUE ~ 0),
+         horror = case_when(str_detect(genre, "Horror") ~ 1, TRUE ~ 0),
+         animation = case_when(str_detect(genre, "Animation") ~ 1, TRUE ~ 0),
+         family = case_when(str_detect(genre, "Family") ~ 1, TRUE ~ 0),
+         mystery = case_when(str_detect(genre, "Mystery") ~ 1, TRUE ~ 0),
+         bechdel = case_when(str_detect(bechdel_result, "PASS") ~ 1, TRUE ~ 0)) %>%
+  na.omit()
+
+cont_vars <- c("year", "budget", "domgross", "intgross", "budget_2013", "domgross_2013", "intgross_2013", "metascore","imdb_rating", "runtime", "bechdel")
+
+mov[cont_vars] <- map(.x = mov[cont_vars], .f = as.numeric)
+
+
+
+df <- mov %>%
+  group_by(year) %>%
+  summarize(numberpass = sum(bechdel))
+
+dft<- mov %>%
+  group_by(year) %>%
+  tally()
+
+### merge the datasets
+year_prop <- inner_join(df, dft, by = "year") %>%
+  mutate(percent_pass = numberpass/n)
+
+df2 <- mov %>% group_by(year,bechdel_result) %>% add_tally()
+
+```
+
+
+### Number of Movies that Pass the Bechdel test from 1970 - 2013
+
+```{r}
+ggplot(data = df, aes(x = year, y = numberpass)) +
+  geom_line(color = "deeppink") +
+  labs(title = "Number of Bechdel Passing Movies per Year", subtitle = "from 1970 - 2013", x = "Year", y = "Number of Movies that pass the Bechdel Test", caption = "The amount of movies passing the Bechdel test has dramatically increased over the years.") +
+  theme_bw()
+```
+
+### Proportion of Movies that Pass the Bechdel test from 1970 - 2013
+
+```{r}
+ggplot(data = year_prop, aes(x = year, y = percent_pass)) +
+  geom_line(color = "deeppink") + 
+  labs(title = "Proportion of Bechdel Passing Movies per Year", subtitle = "from 1970 - 2013", x = "Year", y = "Proportion of Movies that pass the Bechdel Test", caption = "The proportion of movies that pass the Bechdel test does not seem to correlate with the year it was released") +
+  theme_bw()
+```
+
+
+Characteristics of Movies Stratified by Bechdel Result
+=========================================
+```{r}
+
+
+tab1 <- CreateTableOne(vars = cont_vars, strata = "bechdel_result", data = mov)
+kableone(tab1)
+```
+
+
+Movie Ratings
+=========================================
+
+
+
+Column {.sidebar data-width=300}
+-----------------------------------------------------------------------
+
+```{r}
+selectInput(inputId = "year_selected", 
+              label = "Select a year",
+            choices = mov %>% 
+              pull(year) %>% 
+              unique() %>%
+              sort(), selected = "2013")
+```
+
+
+Column {data-width=900 .tabset .tabset-fade}
+-----------------------------------------------------------------------
+
+### Pie Chart of Movie Ratings Stratified by Bechdel Result in a Given Year
+
+
+```{r}
+renderPlot({
+  mov_year <- mov %>% filter(year == input$year_selected)
+  
+  subtitle1 <- paste0("in the year", as.character(input$year_selected))
+
+
+ggplot(data = mov_year, aes(x=factor(1),fill = rated)) +
+  geom_bar(width = 1) +
+  labs(title = "Number of Movies in each rating category stratified by Bechdel Test Result", subtitle = subtitle1, x = "Movie Rating", y = "Count") +
+  theme_void() +
+  coord_polar("y") +
+  facet_wrap(~bechdel_result)
+})
+
+```
+
+
+Movie Summary
+=========================================
+
+
+Column {.sidebar}
+-----------------------------------------------------------------------
+
+
+### Here's some more information on your favorite movies
+
+
+```{r}
+selectInput(inputId = "year_select", 
+              label = "Select a year",
+            choices = mov %>% 
+              pull(year) %>% 
+              unique() %>%
+              sort(), selected = "2013")
+
+selectInput(inputId = "rating_selected", 
+              label = "Select a rating",
+            choices = mov %>% 
+              pull(rated) %>% 
+              unique() %>%
+              sort(), selected = "PG")
+
+selectInput(inputId = "bechdel_selected", 
+              label = "Select a bechdel result",
+            choices = mov %>% 
+              pull(bechdel_result) %>% 
+              unique() %>%
+              sort(), selected = "PASS")
+
+```
+
+
+Column
+-----------------------------------------------------------------------
+
+
+```{r}
+renderTable({
+  summ <- mov %>% filter(year == input$year_select,
+                         rated == input$rating_selected,
+                         bechdel_result == input$bechdel_selected)
+  summ
+  
+  
+})
+```
+
+Analysis from Project 3
+=========================================
+
+Column {.tabset}
+----------------------------------------
+
+
+### slight data cleaning
+```{r, echo = TRUE}
+mov <- select(movies, -c(imdb,test, clean_test, code, plot, country, writer, actors, released, type, poster, imdb_votes, error, response, period_code)) %>%
+  rename("bechdel_result" = "binary") %>%
+  mutate(runtime = str_replace(movies[["runtime"]], " min", "")) %>%
+  #mutate(runtime = substr(movies[["runtime"]], start=1, stop=2)) %>%
+  mutate(biography = case_when(str_detect(genre, "Biography") ~ 1, TRUE ~ 0),
+         drama = case_when(str_detect(genre, "Drama") ~ 1, TRUE ~ 0),
+         history = case_when(str_detect(genre, "History") ~ 1, TRUE ~ 0),
+         action = case_when(str_detect(genre, "Action") ~ 1, TRUE ~ 0),
+         comedy = case_when(str_detect(genre, "Comedy") ~ 1, TRUE ~ 0),
+         crime = case_when(str_detect(genre, "Crime") ~ 1, TRUE ~ 0),
+         sport = case_when(str_detect(genre, "Sport") ~ 1, TRUE ~ 0),
+         adventure = case_when(str_detect(genre, "Adventure") ~ 1, TRUE ~ 0),
+         fantasy = case_when(str_detect(genre, "Fantasy") ~ 1, TRUE ~ 0),
+         thriller = case_when(str_detect(genre, "Thriller") ~ 1, TRUE ~ 0),
+         romance = case_when(str_detect(genre, "Romance") ~ 1, TRUE ~ 0),
+         scifi = case_when(str_detect(genre, "Sci-fi") ~ 1, TRUE ~ 0),
+         horror = case_when(str_detect(genre, "Horror") ~ 1, TRUE ~ 0),
+         animation = case_when(str_detect(genre, "Animation") ~ 1, TRUE ~ 0),
+         family = case_when(str_detect(genre, "Family") ~ 1, TRUE ~ 0),
+         mystery = case_when(str_detect(genre, "Mystery") ~ 1, TRUE ~ 0),
+         bechdel = case_when(str_detect(bechdel_result, "PASS") ~ 1, TRUE ~ 0)) %>%
+  na.omit()
+
+cont_vars <- c("year", "budget", "domgross", "intgross", "budget_2013", "domgross_2013", "intgross_2013", "metascore","imdb_rating", "runtime", "bechdel")
+
+mov[cont_vars] <- map(.x = mov[cont_vars], .f = as.numeric)
+```
+
+
+
+
+### start to look at data
+Here, we start to look at if there are any noticeable differences among the variables based on if the movie passes the bechdel test. 
+```{r, echo = TRUE}
+str_dat <- mov |> split(mov$bechdel_result)
+str_dat |> map_dbl(.f = ~mean(.x$budget), na.rm = TRUE)
+```
+We could use this code to look at every variable but this is where the tableone package can be useful:
+
+### tableone example
+```{r, echo = TRUE}
+CreateContTable(vars = cont_vars, data = mov)
+
+CreateTableOne(vars = cont_vars, strata = "bechdel_result", data = mov)
+```
+the tableone package creates a table that summarizes key characteristics for both categorical and continuous data. The first table in this example looks at continuous data for the entire dataset. The second table stratifies the variables by whether or not the movie has passed the bechdel test. 
+
+
+### logistic regression
+very basic (no interaction term)
+```{r logistic}
+m <- glm(data=mov, bechdel~biography+drama+history+action+comedy+crime+sport+adventure+fantasy+thriller+romance+horror+animation+family+mystery+as.factor(decade_code)+as.factor(rated), family = binomial(link = "logit"))
+
+summary(m)
+```
+
+### visualizations
+
+```{r}
+library(dplyr)
+
+df <- mov %>%
+  group_by(year) %>%
+  summarize(numberpass = sum(bechdel))
+
+dft<- mov %>%
+  group_by(year) %>%
+  tally()
+
+### merge the datasets
+year_prop <- inner_join(df, dft, by = "year") %>%
+  mutate(percent_pass = numberpass/n)
+
+df2 <- mov %>% group_by(year,bechdel_result) %>% add_tally()
+```
+
+
+### Number of Bechdel Passing Movies
+```{r}
+ggplot(data = df, aes(x = year, y = numberpass)) +
+  geom_line(color = "deeppink") +
+  labs(title = "Number of Bechdel Passing Movies per Year", subtitle = "from 1970 - 2013", x = "Year", y = "Number of Movies that pass the Bechdel Test", caption = "The amount of movies passing the Bechdel test has dramatically increased over the years.") +
+  theme_bw()
+```
+
+
+### Proportion of Bechdel Passing Movies
+```{r}
+ggplot(data = year_prop, aes(x = year, y = percent_pass)) +
+  geom_line(color = "deeppink") + 
+  labs(title = "Proportion of Bechdel Passing Movies per Year", subtitle = "from 1970 - 2013", x = "Year", y = "Proportion of Movies that pass the Bechdel Test", caption = "The proportion of movies that pass the Bechdel test does not seem to correlate with the year it was released") +
+  theme_bw()
+
+
+```
+
+
+
+### Number of Movies in each rating category
+```{r}
+ggplot(data = mov, aes(x=rated)) +
+  geom_bar(fill = 'pink') +
+  labs(title = "Number of Movies in each rating category stratified by Bechdel Test Result", subtitle = "movies from 1970 - 2013", x = "Movie Rating", y = "Count", caption = "Overall, there are fewer passing movies in all categories compared to failing movies") +
+  theme_bw() +
+  facet_wrap(~bechdel_result) +
+  theme(axis.text.x = element_text(angle = 45, vjust =0.5, hjust = 1))
+```
+
+
+### Movie Budget vs International Grossing
+```{r}
+ggplot(data = mov, aes(x = budget_2013, y = intgross_2013)) +
+  geom_jitter(aes(colour = bechdel_result)) +
+  labs(title = "Movie Budget vs International Grossing in Release Year", subtitle = "by Bechdel Test Result", x = "Movie Budget normalized to 2013", y = "International Gross normalized to 2013", caption = "There does not appear to be a correlation between budget and international earnings.")
+```
+
+
+### Conclusions
+
+
+Based on this brief analysis, it is not totally clear what factors are most associated with movies that pass the bechdel test. Further logistic regression should be run to clear this up and answer the question!
+
+Functions used:
+
+* dplyr: Select, mutate, case_when
+* stringr: substr, str_detect, str_replace
+* purr: map, map_dbl
+* ggplot2: geom_line, geom_bar, geom_jitter
+* tableone: CreateContTable, CreateTableOne
+
+
